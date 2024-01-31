@@ -26,6 +26,8 @@ parser_definition() {
 	cmd test -- "Tests connectivity and tools to run setup scripts."
 	cmd setup_ssl_certs -- "Issue and install ssl certs using acme.sh"
 	cmd setup_proxy_host -- "Sets up app directory and proxy host (nginx)."
+	cmd setup_postgresql -- "Sets up postgresql."
+	cmd setup_nginx -- "Sets up nginx."
 }
 
 parser_definition_install() {
@@ -63,6 +65,22 @@ parser_definition_setup_proxy_host() {
 	disp    :usage  -h --help
 }
 
+parser_definition_setup_postgresql() {
+	setup   REST help:usage abbr:true -- \
+		"Usage: ${2##*/} setup_postgresql [options...] [arguments...]"
+	msg -- '' 'gdevops setup_postgresql' ''
+	msg -- 'Options:'
+	disp    :usage  -h --help
+}
+
+parser_definition_setup_nginx() {
+	setup   REST help:usage abbr:true -- \
+		"Usage: ${2##*/} setup_nginx [options...] [arguments...]"
+	msg -- '' 'gdevops setup_nginx' ''
+	msg -- 'Options:'
+	disp    :usage  -h --help
+}
+
 eval "$(getoptions parser_definition parse "$0") exit 1"
 parse "$@"
 eval "set -- $REST"
@@ -88,6 +106,16 @@ if [ $# -gt 0 ]; then
 			;;
         setup_proxy_host)
 			eval "$(getoptions parser_definition_setup_proxy_host parse "$0")"
+			parse "$@"
+			eval "set -- $REST"
+            ;;
+        setup_postgresql)
+			eval "$(getoptions parser_definition_setup_postgresql parse "$0")"
+			parse "$@"
+			eval "set -- $REST"
+            ;;
+        setup_nginx)
+			eval "$(getoptions parser_definition_setup_nginx parse "$0")"
 			parse "$@"
 			eval "set -- $REST"
             ;;
@@ -284,6 +312,31 @@ setup_proxy_host() {
     _success "nginx conf generated successfully and app server is ready ($GDEVOPS_APP_HOSTNAME)"
 }
 
+setup_postgresql() {
+    _info "installing postgresql..."
+
+    sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+    wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+    sudo apt-get update
+    sudo apt-get -y install postgresql-16
+
+    _success "postgresql are installed successfully for"
+}
+
+setup_nginx() {
+    _info "installing nginx..."
+
+    sudo apt install curl gnupg2 ca-certificates lsb-release ubuntu-keyring
+    curl https://nginx.org/keys/nginx_signing.key | gpg --dearmor | sudo tee /usr/share/keyrings/nginx-archive-keyring.gpg >/dev/null
+    gpg --dry-run --quiet --no-keyring --import --import-options import-show /usr/share/keyrings/nginx-archive-keyring.gpg
+    echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] http://nginx.org/packages/ubuntu $(lsb_release -cs) nginx" | sudo tee /etc/apt/sources.list.d/nginx.list
+    printf "Package: *\nPin: origin nginx.org\nPin: release o=nginx\nPin-Priority: 900\n" | sudo tee /etc/apt/preferences.d/99nginx
+    sudo apt update
+    sudo apt install -y nginx
+
+    _success "nginx installed successfully."
+}
+
 subcommand=$cmd
 is_env_exist=no
 if [ ! -z "$GDEVOPS_APP_HOSTNAME" ]; then
@@ -324,6 +377,12 @@ case $subcommand in
             send_proxy_conf
             ssh "$GDEVOPS_SSH_CONN_URI" 'bash -li -c "gdevops setup_proxy_host"'
         fi
+        ;;
+    setup_postgresql)
+        setup_postgresql
+        ;;
+    setup_nginx)
+        setup_nginx
         ;;
     *)
         _err "no subcommand specified."
