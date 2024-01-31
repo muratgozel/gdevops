@@ -217,7 +217,7 @@ case $subcommand in
             test
         else
             set_env
-            ssh $GDEVOPS_SSH_CONN_URI 'bash -lc "gdevops test"'
+            ssh $GDEVOPS_SSH_CONN_URI 'bash -lci "gdevops test"'
         fi
         ;;
     setup_ssl_certs)
@@ -225,7 +225,7 @@ case $subcommand in
             setup_ssl_certs
         else
             set_env
-            ssh $GDEVOPS_SSH_CONN_URI 'bash -lc "gdevops setup_ssl_certs"'
+            ssh $GDEVOPS_SSH_CONN_URI 'bash -lci "gdevops setup_ssl_certs"'
         fi
         ;;
     *)
