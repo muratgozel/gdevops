@@ -239,7 +239,7 @@ setup_proxy_host() {
     fi
 
     NGINX_CONF_ROOT=/etc/nginx/conf.d/
-    APP_ROOT="${GDEVOPS_APPS_ROOT}${GDEVOPS_APP_HOSTNAME}/www"
+    export APP_ROOT="${GDEVOPS_APPS_ROOT}${GDEVOPS_APP_HOSTNAME}/www"
 
     # this directory primarily for static hosting
     # but we create it for every host anyway
