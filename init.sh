@@ -220,6 +220,13 @@ send_proxy_conf() {
     fi
 }
 
+remove_proxy_conf_template() {
+    conf_path="./$GDEVOPS_APP_HOSTNAME.conf"
+    if [ -f "$conf_path" ]; then
+        rm "$conf_path"
+    fi
+}
+
 setup_proxy_host() {
     # validate env vars
     if [ -z "$GDEVOPS_APP_HOSTNAME" ]; then _err "missing env var: GDEVOPS_APP_HOSTNAME"; fi
@@ -266,6 +273,7 @@ setup_proxy_host() {
     fi
 
     envsubst '${NGINX_SERVER_NAMES},${NGINX_SSL_CERTIFICATE_PATH},${NGINX_SSL_CERTIFICATE_KEY_PATH},${NGINX_PROXY_PASS},${APP_ROOT}' < "$conf_path" > "${NGINX_CONF_ROOT}$GDEVOPS_APP_HOSTNAME.conf"
+    remove_proxy_conf_template
 
     if ! is_nginx_config_valid; then
         _err "failed to validate nginx config."
