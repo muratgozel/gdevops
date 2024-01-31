@@ -7,7 +7,11 @@ PROJECT_NAME=gdevops
 INSTALL_DIR="$HOME/.$PROJECT_NAME"
 ACME_SH_EXEC="/root/.acme.sh/acme.sh"
 
-. "$INSTALL_DIR/getoptions.sh"
+if [ -f "$INSTALL_DIR/getoptions.sh" ]; then
+    . "$INSTALL_DIR/getoptions.sh"
+else
+    . ./getoptions.sh
+fi
 
 parser_definition() {
 	setup   REST help:usage abbr:true -- \
@@ -78,7 +82,11 @@ else
     cmd=""
 fi
 
-. "$INSTALL_DIR/lib/base.sh"
+if [ -f "$INSTALL_DIR/lib/base.sh" ]; then
+    . "$INSTALL_DIR/lib/base.sh"
+else
+    . ./lib/base.sh
+fi
 
 install() {
     _info "installing $PROJECT_NAME"
