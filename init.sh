@@ -25,6 +25,7 @@ parser_definition() {
 	cmd install -- "Installs gdevops"
 	cmd test -- "Tests connectivity and tools to run setup scripts."
 	cmd setup_ssl_certs -- "Issue and install ssl certs using acme.sh"
+	cmd setup_proxy_host -- "Sets up app directory and proxy host (nginx)."
 }
 
 parser_definition_install() {
@@ -53,6 +54,15 @@ parser_definition_setup_ssl_certs() {
 	disp    :usage  -h --help
 }
 
+parser_definition_setup_proxy_host() {
+	setup   REST help:usage abbr:true -- \
+		"Usage: ${2##*/} setup_proxy_host [options...] [arguments...]"
+	msg -- '' 'gdevops setup_proxy_host' ''
+	msg -- 'Options:'
+	option  INFISICAL_ENV  -e --infisical-env on:"prod"  -- "environment name for infisical"
+	disp    :usage  -h --help
+}
+
 eval "$(getoptions parser_definition parse "$0") exit 1"
 parse "$@"
 eval "set -- $REST"
@@ -76,6 +86,11 @@ if [ $# -gt 0 ]; then
 			parse "$@"
 			eval "set -- $REST"
 			;;
+        setup_proxy_host)
+			eval "$(getoptions parser_definition_setup_proxy_host parse "$0")"
+			parse "$@"
+			eval "set -- $REST"
+            ;;
 		--) # no subcommand, arguments only
 	esac
 else
@@ -125,13 +140,15 @@ set_env() {
 }
 
 test() {
+    _info "running tests for $GDEVOPS_APP_HOSTNAME"
+
     # validate dependencies
     if ! _exists nginx; then _err "nginx not found."; fi
     if ! _exists $ACME_SH_EXEC; then _err "acme.sh not found."; fi
     if ! _exists psl; then _err "psl not found."; fi
 
-    echo "acme.sh version: $($ACME_SH_EXEC --version)"
-    echo "nginx version: $(nginx -v)"
+    $ACME_SH_EXEC --version
+    nginx -v
 
     # validate env vars
     if [ -z "$GDEVOPS_APP_HOSTNAME" ]; then _err "missing env var: GDEVOPS_APP_HOSTNAME"; fi
@@ -196,6 +213,69 @@ setup_ssl_certs() {
     _success "ssl certs are installed successfully for $GDEVOPS_APP_HOSTNAME"
 }
 
+send_proxy_conf() {
+    conf_path="$PWD/$GDEVOPS_APP_HOSTNAME.conf"
+    if [ -f "$conf_path" ]; then
+        rsync $conf_path $GDEVOPS_SSH_CONN_URI:
+    fi
+}
+
+setup_proxy_host() {
+    # validate env vars
+    if [ -z "$GDEVOPS_APP_HOSTNAME" ]; then _err "missing env var: GDEVOPS_APP_HOSTNAME"; fi
+    if [ -z "$GDEVOPS_APPS_ROOT" ]; then _err "missing env var: GDEVOPS_APPS_ROOT"; fi
+    if [ -z "$GDEVOPS_SSL_CERTS_ROOT" ]; then _err "missing env var: GDEVOPS_SSL_CERTS_ROOT"; fi
+
+    does_expose_port=yes
+    if [ -z "$GDEVOPS_APP_PORT" ]; then
+        does_expose_port=no
+    fi
+
+    NGINX_CONF_ROOT=/etc/nginx/conf.d/
+    APP_ROOT="${GDEVOPS_APPS_ROOT}${GDEVOPS_APP_HOSTNAME}/www"
+
+    # this directory primarily for static hosting
+    # but we create it for every host anyway
+    if [ ! -d "$APP_ROOT" ]; then
+        mkdir -p "$APP_ROOT"
+
+        if [ -n "$GDEVOPS_APP_ROOT_GROUP" ]; then
+            chgrp "$GDEVOPS_APP_ROOT_GROUP" "$APP_ROOT"
+            chmod g+w "$APP_ROOT"
+        fi
+    fi
+
+    # exporting some of the vars below for envsubst
+    export NGINX_SSL_CERTIFICATE_PATH=${GDEVOPS_SSL_CERTS_ROOT}${GDEVOPS_APP_HOSTNAME}/fullchain.pem
+    export NGINX_SSL_CERTIFICATE_KEY_PATH=${GDEVOPS_SSL_CERTS_ROOT}${GDEVOPS_APP_HOSTNAME}/key.pem
+
+    nginx_server_names="${GDEVOPS_APP_HOSTNAME}"
+    if ! is_subdomain "${GDEVOPS_APP_HOSTNAME}"; then
+      nginx_server_names="${nginx_server_names} www.${GDEVOPS_APP_HOSTNAME}"
+    fi
+    export NGINX_SERVER_NAMES="$nginx_server_names"
+    export NGINX_PROXY_PASS="http://localhost:${GDEVOPS_APP_PORT:-0000}"
+
+    conf_path="./$GDEVOPS_APP_HOSTNAME.conf"
+    if [ ! -f "$conf_path" ]; then
+        if [ "$does_expose_port" = "yes" ]; then
+            conf_path="$INSTALL_DIR/nginx-conf-templates/proxy.conf"
+        else
+            conf_path="$INSTALL_DIR/nginx-conf-templates/static.conf"
+        fi
+    fi
+
+    envsubst '${NGINX_SERVER_NAMES},${NGINX_SSL_CERTIFICATE_PATH},${NGINX_SSL_CERTIFICATE_KEY_PATH},${NGINX_PROXY_PASS},${APP_ROOT}' < "$conf_path" > "${NGINX_CONF_ROOT}$GDEVOPS_APP_HOSTNAME.conf"
+
+    if ! is_nginx_config_valid; then
+        _err "failed to validate nginx config."
+    fi
+
+    service nginx force-reload
+
+    _success "nginx conf generated successfully and app server is ready ($GDEVOPS_APP_HOSTNAME)"
+}
+
 subcommand=$cmd
 is_env_exist=no
 if [ ! -z "$GDEVOPS_APP_HOSTNAME" ]; then
@@ -226,6 +306,15 @@ case $subcommand in
         else
             set_env
             ssh "$GDEVOPS_SSH_CONN_URI" 'bash -li -c "gdevops setup_ssl_certs"'
+        fi
+        ;;
+    setup_proxy_host)
+        if [ "$is_env_exist" = "yes" ]; then
+            setup_proxy_host
+        else
+            set_env
+            send_proxy_conf
+            ssh "$GDEVOPS_SSH_CONN_URI" 'bash -li -c "gdevops setup_proxy_host"'
         fi
         ;;
     *)
