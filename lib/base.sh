@@ -1,6 +1,10 @@
 #!/usr/bin/env sh
 
-. "$INSTALL_DIR/lib/colored_print.sh"
+if [ -f "$INSTALL_DIR/lib/colored_print.sh" ]; then
+    . "$INSTALL_DIR/lib/colored_print.sh"
+else
+    . ./lib/colored_print.sh
+fi
 
 _err() {
     __red "[$(date -u)] $1"
