@@ -278,8 +278,6 @@ remove_ssl_certs() {
 
     # validate env vars
     if [ -z "$GDEVOPS_APP_HOSTNAME" ]; then _err "missing env var: GDEVOPS_APP_HOSTNAME"; fi
-    if [ -z "$GDEVOPS_SSL_CERTS_ROOT" ]; then _err "missing env var: GDEVOPS_SSL_CERTS_ROOT"; fi
-    if [ -z "$GDEVOPS_APP_DNS_PROVIDER" ]; then _err "missing env var: GDEVOPS_APP_DNS_PROVIDER"; fi
 
     _info "removing ssl certs for $GDEVOPS_APP_HOSTNAME..."
 
@@ -371,7 +369,6 @@ remove_proxy_host() {
     # validate env vars
     if [ -z "$GDEVOPS_APP_HOSTNAME" ]; then _err "missing env var: GDEVOPS_APP_HOSTNAME"; fi
     if [ -z "$GDEVOPS_APPS_ROOT" ]; then _err "missing env var: GDEVOPS_APPS_ROOT"; fi
-    if [ -z "$GDEVOPS_SSL_CERTS_ROOT" ]; then _err "missing env var: GDEVOPS_SSL_CERTS_ROOT"; fi
 
     NGINX_CONF_ROOT=/etc/nginx/conf.d/
     rm "${NGINX_CONF_ROOT}$GDEVOPS_APP_HOSTNAME.conf"
