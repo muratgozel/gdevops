@@ -378,7 +378,7 @@ remove_proxy_host() {
         _err "failed to validate nginx config."
     fi
 
-    service nginx force-reload
+    service nginx reload
 
     _success "proxy host removed successfully for the app ($GDEVOPS_APP_HOSTNAME)"
 }
