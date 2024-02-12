@@ -25,7 +25,9 @@ parser_definition() {
 	cmd install -- "Installs gdevops"
 	cmd test -- "Tests connectivity and tools to run setup scripts."
 	cmd setup_ssl_certs -- "Issue and install ssl certs using acme.sh"
+	cmd remove_ssl_certs -- "Remove ssl certs for a host."
 	cmd setup_proxy_host -- "Sets up app directory and proxy host (nginx)."
+	cmd remove_proxy_host -- "Remove nginx host for a host."
 	cmd setup_postgresql -- "Sets up postgresql."
 	cmd setup_nginx -- "Sets up nginx."
 }
@@ -56,10 +58,28 @@ parser_definition_setup_ssl_certs() {
 	disp    :usage  -h --help
 }
 
+parser_definition_remove_ssl_certs() {
+	setup   REST help:usage abbr:true -- \
+		"Usage: ${2##*/} remove_ssl_certs [options...] [arguments...]"
+	msg -- '' 'gdevops remove_ssl_certs' ''
+	msg -- 'Options:'
+	option  INFISICAL_ENV  -e --infisical-env on:"prod"  -- "environment name for infisical"
+	disp    :usage  -h --help
+}
+
 parser_definition_setup_proxy_host() {
 	setup   REST help:usage abbr:true -- \
 		"Usage: ${2##*/} setup_proxy_host [options...] [arguments...]"
 	msg -- '' 'gdevops setup_proxy_host' ''
+	msg -- 'Options:'
+	option  INFISICAL_ENV  -e --infisical-env on:"prod"  -- "environment name for infisical"
+	disp    :usage  -h --help
+}
+
+parser_definition_remove_proxy_host() {
+	setup   REST help:usage abbr:true -- \
+		"Usage: ${2##*/} remove_proxy_host [options...] [arguments...]"
+	msg -- '' 'gdevops remove_proxy_host' ''
 	msg -- 'Options:'
 	option  INFISICAL_ENV  -e --infisical-env on:"prod"  -- "environment name for infisical"
 	disp    :usage  -h --help
@@ -104,8 +124,18 @@ if [ $# -gt 0 ]; then
 			parse "$@"
 			eval "set -- $REST"
 			;;
+		remove_ssl_certs)
+			eval "$(getoptions parser_definition_remove_ssl_certs parse "$0")"
+			parse "$@"
+			eval "set -- $REST"
+			;;
         setup_proxy_host)
 			eval "$(getoptions parser_definition_setup_proxy_host parse "$0")"
+			parse "$@"
+			eval "set -- $REST"
+            ;;
+        remove_proxy_host)
+			eval "$(getoptions parser_definition_remove_proxy_host parse "$0")"
 			parse "$@"
 			eval "set -- $REST"
             ;;
@@ -241,6 +271,31 @@ setup_ssl_certs() {
     _success "ssl certs are installed successfully for $GDEVOPS_APP_HOSTNAME"
 }
 
+remove_ssl_certs() {
+    # validate dependencies
+    if ! _exists $ACME_SH_EXEC; then _err "acme.sh not found."; fi
+    if ! _exists psl; then _err "psl not found."; fi
+
+    # validate env vars
+    if [ -z "$GDEVOPS_APP_HOSTNAME" ]; then _err "missing env var: GDEVOPS_APP_HOSTNAME"; fi
+    if [ -z "$GDEVOPS_SSL_CERTS_ROOT" ]; then _err "missing env var: GDEVOPS_SSL_CERTS_ROOT"; fi
+    if [ -z "$GDEVOPS_APP_DNS_PROVIDER" ]; then _err "missing env var: GDEVOPS_APP_DNS_PROVIDER"; fi
+
+    _info "removing ssl certs for $GDEVOPS_APP_HOSTNAME..."
+
+    # prepare cmd args for acme.sh
+    acme_arg_hostnames="-d $GDEVOPS_APP_HOSTNAME"
+    if ! is_subdomain "$GDEVOPS_APP_HOSTNAME"; then
+      acme_arg_hostnames="${acme_arg_hostnames} -d www.$GDEVOPS_APP_HOSTNAME"
+    fi
+
+    # revoke and remove ssl certs
+    $ACME_SH_EXEC --revoke $acme_arg_hostnames
+    $ACME_SH_EXEC --remove $acme_arg_hostnames
+
+    _success "ssl certs are removed successfully for $GDEVOPS_APP_HOSTNAME"
+}
+
 send_proxy_conf() {
     conf_path="$PWD/$GDEVOPS_APP_HOSTNAME.conf"
     if [ -f "$conf_path" ]; then
@@ -312,6 +367,25 @@ setup_proxy_host() {
     _success "nginx conf generated successfully and app server is ready ($GDEVOPS_APP_HOSTNAME)"
 }
 
+remove_proxy_host() {
+    # validate env vars
+    if [ -z "$GDEVOPS_APP_HOSTNAME" ]; then _err "missing env var: GDEVOPS_APP_HOSTNAME"; fi
+    if [ -z "$GDEVOPS_APPS_ROOT" ]; then _err "missing env var: GDEVOPS_APPS_ROOT"; fi
+    if [ -z "$GDEVOPS_SSL_CERTS_ROOT" ]; then _err "missing env var: GDEVOPS_SSL_CERTS_ROOT"; fi
+
+    NGINX_CONF_ROOT=/etc/nginx/conf.d/
+    rm "${NGINX_CONF_ROOT}$GDEVOPS_APP_HOSTNAME.conf"
+    rm -rf "${GDEVOPS_APPS_ROOT}${GDEVOPS_APP_HOSTNAME}"
+
+    if ! is_nginx_config_valid; then
+        _err "failed to validate nginx config."
+    fi
+
+    service nginx force-reload
+
+    _success "proxy host removed successfully for the app ($GDEVOPS_APP_HOSTNAME)"
+}
+
 setup_postgresql() {
     _info "installing postgresql..."
 
@@ -369,6 +443,14 @@ case $subcommand in
             ssh "$GDEVOPS_SSH_CONN_URI" 'bash -li -c "gdevops setup_ssl_certs"'
         fi
         ;;
+    remove_ssl_certs)
+        if [ "$is_env_exist" = "yes" ]; then
+            remove_ssl_certs
+        else
+            set_env
+            ssh "$GDEVOPS_SSH_CONN_URI" 'bash -li -c "gdevops remove_ssl_certs"'
+        fi
+        ;;
     setup_proxy_host)
         if [ "$is_env_exist" = "yes" ]; then
             setup_proxy_host
@@ -376,6 +458,14 @@ case $subcommand in
             set_env
             send_proxy_conf
             ssh "$GDEVOPS_SSH_CONN_URI" 'bash -li -c "gdevops setup_proxy_host"'
+        fi
+        ;;
+    remove_proxy_host)
+        if [ "$is_env_exist" = "yes" ]; then
+            remove_proxy_host
+        else
+            set_env
+            ssh "$GDEVOPS_SSH_CONN_URI" 'bash -li -c "gdevops remove_proxy_host"'
         fi
         ;;
     setup_postgresql)
