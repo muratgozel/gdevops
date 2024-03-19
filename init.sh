@@ -192,6 +192,7 @@ install() {
 }
 
 set_env() {
+    _info "fetching env for $INFISICAL_ENV env"
     infisical export --env=$INFISICAL_ENV --format=dotenv-export > "$PWD/gdevops.env"
     . "$PWD/gdevops.env"
     rm "$PWD/gdevops.env"
